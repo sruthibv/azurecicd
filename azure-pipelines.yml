@@ -1,0 +1,42 @@
+trigger:
+- master
+
+variables:
+  imageName: 'myacr.azurecr.io/myapp'
+  tag: 'latest'
+  azureSubscription: 'MyAzureConnection'
+  acrServiceConnection: 'MyACRConnection'
+  sshConnection: 'MyVMConnection'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+# Step 1: Docker Build & Push to ACR
+- task: Docker@2
+  displayName: 'Build and Push to ACR'
+  inputs:
+    containerRegistry: '$(acrServiceConnection)'
+    repository: 'myapp'
+    command: 'buildAndPush'
+    Dockerfile: '**/Dockerfile'
+    tags: |
+      $(tag)
+
+# Step 2: SSH into VM and run the container from ACR
+- task: SSH@0
+  displayName: 'Run Docker Image on Azure VM'
+  inputs:
+    sshEndpoint: '$(sshConnection)'
+    runOptions: 'commands'
+    command: |
+      az login --identity || true
+      az acr login --name myacr || true
+
+      docker pull myacr.azurecr.io/myapp:latest
+
+      docker stop myapp || true
+      docker rm myapp || true
+
+      docker run -d -p 80:80 --name myapp myacr.azurecr.io/myapp:latest
